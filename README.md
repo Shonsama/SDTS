@@ -1,1 +1,1 @@
-# SDTS - Suspect detection and tracking system
+# SDTS - Suspect Detection and Tracking System
