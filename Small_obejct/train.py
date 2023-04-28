@@ -218,7 +218,7 @@ def Generate_high_resolution(img):
     tlx.vision.save_image(out, file_name='Generated.png', path=save_dir)
 
 
-Generate_high_resolution('./gan.jpg')
+Generate_high_resolution('./img_face_1.jpg')
 
 # if __name__ == '__main__':
 #     import argparse
