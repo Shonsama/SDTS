@@ -182,7 +182,7 @@ def get_video_urls(source):
 def recgonize_Face(videos):
     people = []
     for key,video in videos.items():
-        for key_body,body in videos[video]['bodies'].items():
+        for key_body,body in video['bodies'].items():
             if face_reid(body['frame']):
                 body['detect'] = True
                 people.append(body['frame'])
@@ -192,7 +192,7 @@ def recgonize_Face(videos):
 
 def recgonize_Body(videos, people):
     for key,video in videos.items():
-        for key_body,body in videos[video]['bodies'].items():
+        for key_body,body in video['bodies'].items():
             if not body['detect']:
                 for person in people:
                     if body_reid(person, body['frame']):
