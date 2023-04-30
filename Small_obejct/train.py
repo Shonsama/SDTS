@@ -192,22 +192,22 @@ def evaluate_2():
     out_bicu = cv2.resize(valid_lr_img, dsize=[size[1] * 4, size[0] * 4], interpolation=cv2.INTER_CUBIC)
     tlx.vision.save_image(out_bicu, file_name='valid_hr_cubic.png', path=save_dir)
 
-def Generate_high_resolution(img):
+def Generate_high_resolution(img_arrary):
     # load weights
     G.load_weights(os.path.join(checkpoint_dir, 'g.npz'), format='npz_dict')
     G.set_eval()
-    # load image
-    valid_hr_img = tlx.vision.load_image(img)
-    # img2arrary
-    valid_lr_img = np.asarray(valid_hr_img)
+    # # load image
+    # valid_hr_img = tlx.vision.load_image(img)
+    # # img2arrary
+    # valid_lr_img = np.asarray(valid_hr_img)
 
-    valid_lr_img_tensor = (valid_lr_img / 127.5) - 1  # rescale to ［－1, 1]
+    valid_lr_img_tensor = (img_arrary / 127.5) - 1  # rescale to ［－1, 1]
 
     valid_lr_img_tensor = np.asarray(valid_lr_img_tensor, dtype=np.float32)
     valid_lr_img_tensor = np.transpose(valid_lr_img_tensor, axes=[2, 0, 1])
     valid_lr_img_tensor = valid_lr_img_tensor[np.newaxis, :, :, :]
     valid_lr_img_tensor = tlx.ops.convert_to_tensor(valid_lr_img_tensor)
-    size = [valid_lr_img.shape[0], valid_lr_img.shape[1]]
+    size = [img_arrary.shape[0], img_arrary.shape[1]]
 
     out = tlx.ops.convert_to_numpy(G(valid_lr_img_tensor))
     out = np.asarray((out + 1) * 127.5, dtype=np.uint8)
@@ -216,10 +216,13 @@ def Generate_high_resolution(img):
         size, out.shape))  # LR size: (339, 510, 3) /  gen HR size: (1, 1356, 2040, 3)
     print("[*] save images")
     tlx.vision.save_image(out, file_name='Generated.png', path=save_dir)
+    return out
 
-
-Generate_high_resolution('./gan.jpg')
-
+Input_image = tlx.vision.load_image('./img_face_1.jpg')
+Input_image_array = np.asarray(Input_image)
+print(Input_image_array)
+Output_image_array = Generate_high_resolution(Input_image_array)
+print(Output_image_array)
 # if __name__ == '__main__':
 #     import argparse
 #
