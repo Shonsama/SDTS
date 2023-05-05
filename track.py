@@ -1,5 +1,5 @@
 import argparse
-
+from Small_obejct.face import face_reid 
 import os
 # limit the number of cpus used by high performance libraries
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -47,7 +47,7 @@ VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 't
 @torch.no_grad()
 def run(
         source='0',
-        yolo_weights=WEIGHTS / 'yolov5m.pt',  # model.pt path(s),
+        yolo_weights=WEIGHTS / 'yolov7.pt',  # model.pt path(s),
         strong_sort_weights=WEIGHTS / 'osnet_x0_25_msmt17.pt',  # model.pt path,
         config_strongsort=ROOT / 'strong_sort/configs/strong_sort.yaml',
         imgsz=(640, 640),  # inference size (height, width)
@@ -103,8 +103,6 @@ def run(
     bodies = {}
     boxes = {}
     for frame_idx, (path, im, im0s, vid_cap) in enumerate(dataset):
-        if frame_idx == 600:
-            break
         im = torch.from_numpy(im).to(device)
         im = im.half() if half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -116,6 +114,8 @@ def run(
         pred = model(im)
         # Apply NMS
         pred = non_max_suppression(pred[0], conf_thres, iou_thres, classes, agnostic_nms)
+
+        box = {}
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             seen += 1
@@ -141,18 +141,24 @@ def run(
                 if len(outputs[i]) > 0:
                     for j, (output, conf) in enumerate(zip(outputs[i], confs)):
                         id = int(output[4])
-                        boxes[frame_idx][id] = output[:4]
+                        box[id] = output[:4]
                         body = im0[int(output[1]):int(output[3]), int(output[0]):int(output[2])]
                         faces = face_cascade.detectMultiScale(body, scaleFactor=1.1, minNeighbors=5)
-                        if len(faces) > 0:
-                            bodies[id]['frame'] = body
-                            bodies[id]['detect'] = False
+                        temp = {}
+                        temp['frame'] = body
+                        temp['detect'] = False if id != 0 else True
+                        if id in bodies:
+                            if len(faces) > 0:
+                                bodies[id] = temp
+                        else:
+                            bodies[id] = temp
 
             else:
                 strongsort_list[i].increment_ages()
                 print('No detections')
 
             prev_frames[i] = curr_frames[i]
+        boxes[frame_idx] = box
     return bodies, boxes
 
 
@@ -161,7 +167,7 @@ def parse_opt():
     parser.add_argument('--yolo-weights', nargs='+', type=str, default=WEIGHTS / 'yolov7.pt', help='model.pt path(s)')
     parser.add_argument('--strong-sort-weights', type=str, default=WEIGHTS / 'osnet_x0_25_msmt17.pt')
     parser.add_argument('--config-strongsort', type=str, default='strong_sort/configs/strong_sort.yaml')
-    parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
+    parser.add_argument('--source', type=str, default='./track', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='NMS IoU threshold')
@@ -181,9 +187,10 @@ def get_video_urls(source):
 
 def recgonize_Face(videos):
     people = []
+    suspect_frame = cv2.imread('./suspect_frame.jpg')
     for key,video in videos.items():
         for key_body,body in video['bodies'].items():
-            if face_reid(body['frame']):
+            if face_reid(body['frame'], suspect_frame):
                 body['detect'] = True
                 people.append(body['frame'])
                 video['detect'] = True
@@ -200,41 +207,59 @@ def recgonize_Body(videos, people):
                         break
     return videos
 
-def draw_boxes(boxes, video_url):
+def draw_boxes(video, video_url):
     # Load model
-    device = select_device(device)
-    save_dir = 'tracks'
-    WEIGHTS.mkdir(parents=True, exist_ok=True)
-    model = attempt_load(Path(WEIGHTS / 'yolov5m.pt'), map_location=device)  # load FP32 model
+    device = select_device('')
+    save_dir = './tracks'
+    model = attempt_load(Path(WEIGHTS / 'yolov7.pt'), map_location=device)  # load FP32 model
     names, = model.names,
     stride = model.stride.max().cpu().numpy()  # model stride
-    imgsz = check_img_size(imgsz[0], s=stride)  # check image size
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+    imgsz = check_img_size(640, s=stride)  # check image size
     # Dataloader
     dataset = LoadImages(video_url, img_size=imgsz, stride=stride)
+
+    # Define output video writer
+    vid_name = Path(video_url).stem + '_tracked.mp4'
+    save_path = Path(save_dir) / vid_name
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = None
     for frame_idx, (path, im, im0s, vid_cap) in enumerate(dataset):
-        for key_body,body in boxes[frame_idx].items():
-            x1, y1, x2, y2 = body
-            cv2.rectangle(im0s, (x1, y1), (x2, y2), colors, 2)
-            cv2.putText(im0s, str(key_body), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, colors, 2)
-            cv2.imwrite(os.path.join(save_dir, path[0]), im0s)
+        if out == None:
+            out = cv2.VideoWriter(str(save_path), fourcc, 25, (im0s.shape[1], im0s.shape[0]))
+
+        for key_body, body in video['boxes'][frame_idx].items():
+            if video['bodies'][key_body]['detect']:
+                x1, y1, x2, y2 = body #body[989.0, 313.0, 1124.0, 672.0]
+                im0s = cv2.rectangle(im0s, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                cv2.putText(im0s, str(key_body), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        out.write(im0s)  # Write frame to output video
+
+    out.release()  # Release output video writer
+
     
     
-def main():
+def main(opt):
     check_requirements(requirements=ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
-    opt = parse_opt()
+    # opt = parse_opt()
     video_urls = get_video_urls(opt.source)
+    print(video_urls)
     videos = {}
     for video_url in video_urls:
         opt.source = video_url
         bodies, boxes = run(**vars(opt))
-        videos[video_url]['detect'] = False
-        videos[video_url]['bodies'] = bodies
-        videos[video_url]['boxes'] = boxes
+        temp = {
+            'detect': False,
+            'bodies': bodies,
+            'boxes': boxes
+        }
+        videos[video_url] = temp
     
     videos, people = recgonize_Face(videos)
-    videos = recgonize_Body(videos, people)
+    # videos = recgonize_Body(videos, people)
     for video_url in video_urls:
         if videos[video_url]['detect']:
-            draw_boxes(videos[video_url]['boxes'], video_url)
+            draw_boxes(videos[video_url], video_url)
     
+if __name__ == "__main__":
+    opt = parse_opt()
+    main(opt)

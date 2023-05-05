@@ -12,6 +12,9 @@ torch>=1.7.0,!=1.12.0
 torchvision>=0.8.1,!=0.13.0
 tqdm>=4.41.0
 protobuf<4.21.3
+face_recognition_models
+Click>=6.0
+dlib>=19.3.0
 
 # plotting ------------------------------------
 
@@ -19,6 +22,7 @@ pandas>=1.1.4
 seaborn>=0.11.0
 
 # deep_sort -----------------------------------
+# 'git+https://github.com/tensorlayer/tensorlayerx.git'
 
 easydict
 
@@ -42,3 +46,4 @@ imageio
 #tensorflow>=2.4.1  # TFLite export (or tensorflow-cpu, tensorflow-aarch64)
 #openvino-dev  # OpenVINO export
 #git+https://github.com/PINTO0309/openvino2tensorflow #OpenVINO to TFLite export
+
